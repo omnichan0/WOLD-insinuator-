@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>OMEGA-8D Admin</title>
+  <style>
+    :root { color-scheme: dark; --bg:#090b12; --panel:#121725; --line:#263149; --text:#e7edf7; --muted:#8d9ab1; --cyan:#18d5ff; --green:#43e09a; --red:#ff667b; }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:radial-gradient(circle at top right,#172542 0,#090b12 48%); color:var(--text); font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+    main { width:min(1080px,100%); margin:0 auto; padding:32px 20px 48px; }
+    .card { background:rgba(18,23,37,.94); border:1px solid var(--line); border-radius:16px; box-shadow:0 18px 60px rgba(0,0,0,.25); }
+    .login { max-width:430px; margin:10vh auto 0; padding:30px; }
+    .brand { color:var(--cyan); font-size:12px; letter-spacing:.2em; text-transform:uppercase; font-weight:700; }
+    h1 { margin:8px 0 4px; font-size:clamp(28px,5vw,42px); letter-spacing:-.04em; }
+    h2 { margin:0; font-size:20px; }
+    .muted { color:var(--muted); }
+    label { display:block; margin:20px 0 7px; color:var(--muted); font-size:13px; }
+    input { width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:10px; background:#0b101b; color:var(--text); font:inherit; }
+    input:focus { outline:2px solid rgba(24,213,255,.35); border-color:var(--cyan); }
+    button { border:0; border-radius:10px; padding:12px 16px; background:var(--cyan); color:#041018; font:700 14px inherit; cursor:pointer; }
+    button:hover { filter:brightness(1.08); }
+    button.secondary { background:#202b42; color:var(--text); }
+    button.danger { background:var(--red); color:#21040a; }
+    .error { min-height:24px; margin-top:14px; color:var(--red); }
+    .hidden { display:none !important; }
+    .topbar { display:flex; justify-content:space-between; align-items:center; gap:16px; margin-bottom:24px; }
+    .actions { display:flex; gap:8px; }
+    .grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .stat { padding:20px; min-height:130px; }
+    .stat .label { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.1em; }
+    .stat .value { margin-top:14px; font-size:25px; font-weight:750; }
+    .online { color:var(--green); }
+    .offline { color:var(--red); }
+    .loading { color:var(--muted); }
+    .details { margin-top:14px; padding:20px; }
+    dl { display:grid; grid-template-columns:180px 1fr; gap:12px 20px; margin:18px 0 0; }
+    dt { color:var(--muted); }
+    dd { margin:0; overflow-wrap:anywhere; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; }
+    @media (max-width:700px) { .grid { grid-template-columns:1fr; } .topbar { align-items:flex-start; flex-direction:column; } dl { grid-template-columns:1fr; gap:4px; } dd { margin-bottom:10px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section id="login" class="card login">
+      <div class="brand">OMEGA-8D control</div>
+      <h1>Admin access</h1>
+      <p class="muted">Sign in to inspect the game server and local AI runtime.</p>
+      <form id="login-form">
+        <label for="email">Admin email</label>
+        <input id="email" name="email" type="email" autocomplete="username" required>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required>
+        <button type="submit" style="margin-top:20px;width:100%">Sign in</button>
+        <div id="login-error" class="error" role="alert"></div>
+      </form>
+    </section>
+
+    <section id="dashboard" class="hidden">
+      <div class="topbar">
+        <div>
+          <div class="brand">OMEGA-8D control</div>
+          <h1>Operations panel</h1>
+          <div id="admin-email" class="muted"></div>
+        </div>
+        <div class="actions">
+          <button id="refresh" class="secondary" type="button">Refresh</button>
+          <button id="logout" class="danger" type="button">Sign out</button>
+        </div>
+      </div>
+      <div class="grid">
+        <article class="card stat"><div class="label">Game server</div><div id="game-status" class="value loading">Checking</div></article>
+        <article class="card stat"><div class="label">Local AI</div><div id="ai-status" class="value loading">Checking</div></article>
+        <article class="card stat"><div class="label">Process uptime</div><div id="uptime" class="value loading">Checking</div></article>
+      </div>
+      <article class="card details">
+        <h2>Runtime details</h2>
+        <dl>
+          <dt>AI provider</dt><dd id="ai-provider">-</dd>
+          <dt>AI model</dt><dd id="ai-model">-</dd>
+          <dt>AI port</dt><dd id="ai-port">-</dd>
+          <dt>Model file</dt><dd id="model-path">-</dd>
+          <dt>Node runtime</dt><dd id="node">-</dd>
+          <dt>Last checked</dt><dd id="checked">-</dd>
+        </dl>
+      </article>
+      <div id="dashboard-error" class="error" role="alert"></div>
+    </section>
+  </main>
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const login = $('login');
+    const dashboard = $('dashboard');
+
+    function setVisible(authenticated) {
+      login.classList.toggle('hidden', authenticated);
+      dashboard.classList.toggle('hidden', !authenticated);
+    }
+
+    function formatUptime(seconds) {
+      const value = Number(seconds || 0);
+      const hours = Math.floor(value / 3600);
+      const minutes = Math.floor((value % 3600) / 60);
+      return `${hours}h ${minutes}m`;
+    }
+
+    async function loadOverview() {
+      $('dashboard-error').textContent = '';
+      const response = await fetch('/api/admin/overview', { credentials: 'same-origin' });
+      if (response.status === 401) {
+        setVisible(false);
+        return;
+      }
+      const data = await response.json();
+      if (!response.ok || !data.success) throw new Error(data.error || 'Unable to load admin data');
+      $('game-status').textContent = data.game.status;
+      $('game-status').className = 'value online';
+      $('ai-status').textContent = data.ai.status;
+      $('ai-status').className = `value ${data.ai.status === 'online' ? 'online' : 'offline'}`;
+      $('uptime').textContent = formatUptime(data.game.uptime);
+      $('admin-email').textContent = `Signed in as ${data.admin.configured ? 'owner' : 'admin'}`;
+      $('ai-provider').textContent = 'llama.cpp';
+      $('ai-model').textContent = data.ai.model;
+      $('ai-port').textContent = String(data.ai.port);
+      $('model-path').textContent = data.modelPath;
+      $('node').textContent = data.node;
+      $('checked').textContent = new Date(data.timestamp).toLocaleString();
+    }
+
+    $('login-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      $('login-error').textContent = '';
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ email: $('email').value, password: $('password').value }),
+      });
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        $('login-error').textContent = data.error || 'Unable to sign in';
+        return;
+      }
+      $('password').value = '';
+      setVisible(true);
+      await loadOverview();
+    });
+
+    $('refresh').addEventListener('click', () => loadOverview().catch(error => {
+      $('dashboard-error').textContent = error.message;
+    }));
+    $('logout').addEventListener('click', async () => {
+      await fetch('/api/admin/logout', { method: 'POST', credentials: 'same-origin' });
+      setVisible(false);
+    });
+
+    fetch('/api/admin/session', { credentials: 'same-origin' }).then(async response => {
+      if (!response.ok) return setVisible(false);
+      setVisible(true);
+      await loadOverview();
+    }).catch(() => setVisible(false));
+  </script>
+</body>
+</html>

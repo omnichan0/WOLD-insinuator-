@@ -1,0 +1,1 @@
+- [Local GGUF validation](model-validation.md) — valid GGUF structure does not guarantee tokenizer/runtime compatibility; probe real inference before declaring AI ready.
